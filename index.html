@@ -12,11 +12,20 @@
     <!-- ARシーンの作成 -->
     <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
       
-      <!-- ★ここを修正★ -->
-      <!-- preset="hiro" を削除し、type="pattern" と url でファイルを指定 -->
+      <!-- 3Dモデルを事前に読み込む（assetsの中に定義） -->
+      <a-assets>
+        <!-- ★ダウンロードしたモデルのパスを指定します★ -->
+        <!-- 例として "model/scene.gltf" としています。フォルダ構成に合わせて変更してください -->
+        <a-asset-item id="my-model" src="model/kirby_3d.glb"></a-asset-item>
+      </a-assets>
+
+      <!-- ご指定のカスタムマーカー -->
       <a-marker type="pattern" url="img/pattern-QR_728497.patt">
-        <!-- マーカーの上に赤い立方体を表示する -->
-        <a-box position="0 0.5 0" material="color: red;"></a-box>
+        
+        <!-- 赤い立方体の代わりに、読み込んだ3Dモデルを表示 -->
+        <!-- もし表示されない（大きすぎる/小さすぎる）場合は、scaleの数値を調整してください -->
+        <a-gltf-model src="#my-model" scale="0.1 0.1 0.1" position="0 0 0" rotation="0 0 0"></a-gltf-model>
+        
       </a-marker>
       
       <!-- カメラを追加 -->
