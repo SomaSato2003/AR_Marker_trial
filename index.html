@@ -2,16 +2,13 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Hybrid AR: Palm Ground Mode</title>
+    <title>Hybrid AR: Marker to Hand (Rear Camera)</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
     <script>
-      /**
-       * アニメーション再生エンジン
-       */
       AFRAME.registerComponent('animation-mixer-local', {
         init: function () {
           this.mixer = null;
@@ -28,67 +25,36 @@
         }
       });
 
-      /**
-       * マーカーと手のひら（地面化）を切り替えるロジック
-       */
       AFRAME.registerComponent('hybrid-bridge', {
         init: function () {
           this.cat = document.querySelector('#cat-model-entity');
           this.marker = document.querySelector('#marker');
           this.status = document.getElementById('status-text');
           this.handInFrame = false;
-          
-          // 計算用のThree.jsオブジェクト
-          this.handRotation = new THREE.Quaternion();
-          this.targetPos = new THREE.Vector3();
 
           const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-          hands.setOptions({ 
-            maxNumHands: 1, 
-            modelComplexity: 1, 
-            minDetectionConfidence: 0.7, 
-            minTrackingConfidence: 0.7 
-          });
+          hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
 
           hands.onResults((results) => {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
               const landmarks = results.multiHandLandmarks[0];
               const handedness = results.multiHandedness[0].label;
 
-              // --- 手の角度（地面）の計算 ---
-              const wrist = new THREE.Vector3(landmarks[0].x, landmarks[0].y, landmarks[0].z);
-              const index = new THREE.Vector3(landmarks[5].x, landmarks[5].y, landmarks[5].z);
-              const pinky = new THREE.Vector3(landmarks[17].x, landmarks[17].y, landmarks[17].z);
-
-              // 手のひらの「向き」を作る2つのベクトル
-              const v5 = new THREE.Vector3().subVectors(index, wrist);
-              const v17 = new THREE.Vector3().subVectors(pinky, wrist);
+              const v1 = { x: landmarks[5].x - landmarks[0].x, y: landmarks[5].y - landmarks[0].y };
+              const v2 = { x: landmarks[17].x - landmarks[0].x, y: landmarks[17].y - landmarks[0].y };
+              const crossProduct = v1.x * v2.y - v1.y * v2.x;
               
-              // 外積によって手のひらに対して垂直なベクトル（法線）を算出
-              const normal = new THREE.Vector3().crossVectors(v5, v17).normalize();
-              
-              // 外カメラ(environment)での手のひら/甲の判定
-              let isPalm = (handedness === "Left") ? (normal.z > 0) : (normal.z < 0);
+              // 外カメラ(鏡映反転なし)の場合、判定を調整
+              let isPalm = (handedness === "Left") ? (crossProduct < 0) : (crossProduct > 0);
 
               if (isPalm) {
-                // 猫の向きを決定
-                // normalを猫の「上(Up)」方向に、v5(指の方向)を「前(Forward)」方向に設定
-                const upVec = normal.clone().multiplyScalar(handedness === "Left" ? -1 : 1);
-                const forwardVec = v5.clone().normalize().multiplyScalar(-1);
-                
-                const matrix = new THREE.Matrix4();
-                matrix.lookAt(new THREE.Vector3(0,0,0), forwardVec, upVec);
-                this.handRotation.setFromRotationMatrix(matrix);
-
-                // 座標(0~1)を3D空間(-2~2等)へ変換
-                const lm = landmarks[9]; // 手のひら中央
-                this.targetPos.set((lm.x - 0.5) * 4, -(lm.y - 0.5) * 3, -3 + (lm.z * 2));
-                
+                const lm = landmarks[9];
+                this.moveToHand(lm.x, lm.y);
                 this.handInFrame = true;
-                this.status.innerText = "✅ 手のひらを地面として認識中";
+                this.status.innerText = "✅ 手のひらに移動中";
               } else {
                 this.handInFrame = false;
-                this.status.innerText = "✋ 手の甲を検知：マーカー待機";
+                this.status.innerText = "✋ 手の甲を検知：マーカーに戻ります";
               }
             } else {
               this.handInFrame = false;
@@ -96,32 +62,33 @@
             }
           });
 
-          const video = document.querySelector('#arjs-video');
-          const setupCamera = () => {
+          const startMediaPipe = () => {
+            const video = document.querySelector('#arjs-video');
             if (video) {
+              // MediaPipeのカメラ設定を外向きに固定
               const camera = new Camera(video, { 
                 onFrame: async () => { await hands.send({image: video}); },
                 facingMode: 'environment' 
               });
               camera.start();
-            } else { setTimeout(setupCamera, 500); }
+            } else { setTimeout(startMediaPipe, 500); }
           };
-          setupCamera();
+          startMediaPipe();
+        },
+
+        moveToHand: function (hx, hy) {
+          const x = (hx - 0.5) * 4;
+          const y = -(hy - 0.5) * 3;
+          const z = -3;
+          this.el.sceneEl.object3D.add(this.cat.object3D);
+          this.cat.object3D.position.set(x, y, z);
+          this.cat.object3D.rotation.set(0, 0, 0);
         },
 
         tick: function () {
-          if (this.handInFrame) {
-            // シーン直下（カメラ視点固定）に移動し、手の位置と角度を同期
-            this.el.sceneEl.object3D.add(this.cat.object3D);
-            this.cat.object3D.position.lerp(this.targetPos, 0.2); // 動きを滑らかにする
-            this.cat.object3D.quaternion.slerp(this.handRotation, 0.2);
-            // モデルが横に倒れる場合はここで微調整 (例: 90度回転)
-            this.cat.object3D.rotateX(Math.PI / 2);
-          } else {
-            // 手がない時はマーカーの子に戻る
+          if (!this.handInFrame) {
             this.marker.object3D.add(this.cat.object3D);
             this.cat.object3D.position.set(0, 0, 0);
-            this.cat.object3D.rotation.set(0, 0, 0);
           }
         }
       });
@@ -130,7 +97,7 @@
 
   <body style="margin: 0; overflow: hidden;">
     <div id="status-display" style="position: fixed; top: 20px; left: 20px; background: rgba(0,0,0,0.8); color: white; padding: 15px; border-radius: 8px; font-family: sans-serif; z-index: 1000; pointer-events: none;">
-      <strong>Hybrid Palm-Ground AR</strong><br>
+      <strong>Hybrid Cat AR (Rear Cam)</strong><br>
       <span id="status-text">システム起動中...</span>
     </div>
 
