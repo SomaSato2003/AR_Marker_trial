@@ -2,32 +2,49 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>WebAR Custom Marker Example</title>
-    <!-- A-Frameの読み込み (安定版 1.3.0) -->
+    <title>WebAR Custom Marker - Fixed Version</title>
     <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
-    
-    <!-- AR.jsの読み込み -->
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
-    
-    <!-- ★修正: 互換性の高い A-Frame Extras (animation-mixer を内包) に変更 -->
     <script src="https://cdn.jsdelivr.net/gh/donmccarthy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
+
+    <script>
+      // 目の位置を補正するためのカスタムコンポーネント
+      AFRAME.registerComponent('fix-eye-position', {
+        schema: {
+          yOffset: {type: 'number', default: 0} 
+        },
+        init: function () {
+          this.el.addEventListener('model-loaded', () => {
+            const mesh = this.el.getObject3D('mesh');
+            mesh.traverse(node => {
+              // パーツ名に "eye" や "pupil" が含まれるメッシュを探す
+              if (node.isMesh && (node.name.toLowerCase().includes('eye') || node.name.toLowerCase().includes('pupil'))) {
+                console.log("Found eye part:", node.name); // ログでパーツ名を確認可能
+                node.position.y += this.data.yOffset;
+              }
+            });
+          });
+        }
+      });
+    </script>
   </head>
+
   <body style="margin: 0; overflow: hidden;">
-    <!-- ARシーンの作成 (重なり順のバグを防ぐ renderer 設定を追加) -->
-    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;" renderer="logarithmicDepthBuffer: true;">
+    <a-scene 
+      embedded 
+      arjs="sourceType: webcam; debugUIEnabled: false;"
+      renderer="logarithmicDepthBuffer: true; colorManagement: true;">
       
-      <!-- 3Dモデルを事前に読み込む -->
       <a-assets>
         <a-asset-item id="my-model" src="model/tuxedo_cat_animated_2.0/scene.gltf"></a-asset-item>
       </a-assets>
 
-      <!-- ご指定のカスタムマーカー -->
       <a-marker type="pattern" url="img/pattern-QR_728497.patt">
         
-        <!-- ★修正: animation-mixer に「clip: *」を指定し、モデル内の最初のアニメーションを強制再生 -->
         <a-gltf-model 
           src="#my-model" 
-          animation-mixer="clip: *; loop: repeat;" 
+          animation-mixer="clip: IdleNorm; loop: repeat;" 
+          fix-eye-position="yOffset: -0.1"
           scale="0.1 0.1 0.1" 
           position="0 0 0" 
           rotation="0 0 0">
@@ -35,7 +52,6 @@
         
       </a-marker>
       
-      <!-- カメラを追加 -->
       <a-entity camera></a-entity>
     </a-scene>
   </body>
