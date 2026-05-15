@@ -2,42 +2,70 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>WebAR Custom Marker</title>
+    <title>WebAR Debug Mode</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/donmccarthy/aframe-extras@v7.2.0/dist/aframe-extras.min.js"></script>
   </head>
 
   <body style="margin: 0; overflow: hidden;">
-    <a-scene 
-      embedded 
-      arjs="sourceType: webcam; debugUIEnabled: false;"
-      renderer="logarithmicDepthBuffer: true; colorManagement: true; antialias: true;">
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
       
       <a-assets>
         <a-asset-item id="my-model" src="model/munchkin_cat-v1.glb"></a-asset-item>
       </a-assets>
 
       <a-marker type="pattern" url="img/pattern-QR_728497.patt">
-        
         <a-gltf-model 
+          id="cat"
           src="#my-model" 
-          animation-mixer="clip: *; loop: repeat; clampWhenFinished: true;" 
-          scale="2 2 2" 
-          position="0 0 0" 
-          rotation="0 0 0">
+          animation-mixer="clip: *; loop: repeat;" 
+          scale="2 2 2"
+          debug-auto-play>
         </a-gltf-model>
-        
       </a-marker>
       
       <a-entity camera></a-entity>
     </a-scene>
 
     <script>
-      // 画面をどこでもいいからクリックした時にアニメーションを開始させる（ブラウザ制限対策）
+      // デバッグ用のコンポーネント定義
+      AFRAME.registerComponent('debug-auto-play', {
+        init: function () {
+          this.el.addEventListener('model-loaded', (e) => {
+            // モデルのデータを取得
+            const model = e.detail.model;
+            const animations = model.animations;
+
+            if (animations && animations.length > 0) {
+              const names = animations.map(a => a.name);
+              console.log("✅ アニメーション発見:", names);
+              alert("アニメーションを読み込みました: " + names.join(", "));
+              
+              // 強制的に1つ目のアニメーションを開始させる
+              this.el.setAttribute('animation-mixer', {
+                clip: names[0],
+                loop: 'repeat',
+                timeScale: 1
+              });
+            } else {
+              console.error("❌ アニメーションが見つかりませんでした");
+              alert("エラー: このモデルにはアニメーションが含まれていません。");
+            }
+          });
+
+          this.el.addEventListener('model-error', (e) => {
+            console.error("❌ モデルの読み込み自体に失敗しました", e);
+            alert("モデルのファイルパスが間違っているか、ファイルが壊れています。");
+          });
+        }
+      });
+
+      // スマホ対策：画面クリックで再生を蹴り出す
       window.addEventListener('click', function () {
-        const model = document.querySelector('a-gltf-model');
-        model.setAttribute('animation-mixer', {timeScale: 1});
+        const cat = document.querySelector('#cat');
+        cat.setAttribute('animation-mixer', {timeScale: 1});
+        console.log("再開コマンドを送信しました");
       });
     </script>
   </body>
