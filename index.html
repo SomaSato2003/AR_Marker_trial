@@ -2,32 +2,51 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Hybrid AR: Marker to Hand (Rear Camera)</title>
+    <title>Hybrid AR: Animation on Palm Only</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
     <script>
+      /**
+       * アニメーション制御コンポーネント
+       */
       AFRAME.registerComponent('animation-mixer-local', {
         init: function () {
           this.mixer = null;
+          this.isPlaying = false; // 初期状態は停止
           this.el.addEventListener('model-loaded', (e) => {
             const model = e.detail.model;
             if (model.animations && model.animations.length > 0) {
               this.mixer = new THREE.AnimationMixer(model);
-              model.animations.forEach(anim => { this.mixer.clipAction(anim).play(); });
+              model.animations.forEach(anim => {
+                const action = this.mixer.clipAction(anim);
+                action.play();
+                action.enabled = false; // 最初は無効化しておく
+              });
             }
           });
         },
+        // 外部から再生・停止を切り替えるメソッド
+        setPlayState: function (play) {
+          if (!this.mixer) return;
+          this.isPlaying = play;
+          this.mixer._actions.forEach(action => {
+            action.enabled = play;
+          });
+        },
         tick: function (t, dt) {
-          if (this.mixer && !isNaN(dt)) this.mixer.update(dt / 1000);
+          if (this.mixer && this.isPlaying && !isNaN(dt)) {
+            this.mixer.update(dt / 1000);
+          }
         }
       });
 
       AFRAME.registerComponent('hybrid-bridge', {
         init: function () {
-          this.cat = document.querySelector('#cat-model-entity');
+          this.catEntity = document.querySelector('#cat-model-child'); // モデル本体
+          this.catContainer = document.querySelector('#cat-model-entity'); // コンテナ
           this.marker = document.querySelector('#marker');
           this.status = document.getElementById('status-text');
           this.handInFrame = false;
@@ -44,28 +63,27 @@
               const v2 = { x: landmarks[17].x - landmarks[0].x, y: landmarks[17].y - landmarks[0].y };
               const crossProduct = v1.x * v2.y - v1.y * v2.x;
               
-              // 外カメラ(鏡映反転なし)の場合、判定を調整
               let isPalm = (handedness === "Left") ? (crossProduct < 0) : (crossProduct > 0);
 
               if (isPalm) {
                 const lm = landmarks[9];
                 this.moveToHand(lm.x, lm.y);
+                this.setAnimation(true); // アニメーション再生
                 this.handInFrame = true;
-                this.status.innerText = "✅ 手のひらに移動中";
+                this.status.innerText = "✅ 手の上：アニメーション再生中";
               } else {
                 this.handInFrame = false;
-                this.status.innerText = "✋ 手の甲を検知：マーカーに戻ります";
+                this.status.innerText = "✋ 手の甲：停止して戻ります";
               }
             } else {
               this.handInFrame = false;
-              this.status.innerText = "🔍 マーカーまたは手を探しています";
+              this.status.innerText = "🔍 スキャン中...";
             }
           });
 
           const startMediaPipe = () => {
             const video = document.querySelector('#arjs-video');
             if (video) {
-              // MediaPipeのカメラ設定を外向きに固定
               const camera = new Camera(video, { 
                 onFrame: async () => { await hands.send({image: video}); },
                 facingMode: 'environment' 
@@ -80,15 +98,22 @@
           const x = (hx - 0.5) * 4;
           const y = -(hy - 0.5) * 3;
           const z = -3;
-          this.el.sceneEl.object3D.add(this.cat.object3D);
-          this.cat.object3D.position.set(x, y, z);
-          this.cat.object3D.rotation.set(0, 0, 0);
+          this.el.sceneEl.object3D.add(this.catContainer.object3D);
+          this.catContainer.object3D.position.set(x, y, z);
+        },
+
+        setAnimation: function (state) {
+          const mixer = this.catEntity.components['animation-mixer-local'];
+          if (mixer) {
+            mixer.setPlayState(state);
+          }
         },
 
         tick: function () {
           if (!this.handInFrame) {
-            this.marker.object3D.add(this.cat.object3D);
-            this.cat.object3D.position.set(0, 0, 0);
+            this.marker.object3D.add(this.catContainer.object3D);
+            this.catContainer.object3D.position.set(0, 0, 0);
+            this.setAnimation(false); // アニメーション停止
           }
         }
       });
@@ -97,7 +122,7 @@
 
   <body style="margin: 0; overflow: hidden;">
     <div id="status-display" style="position: fixed; top: 20px; left: 20px; background: rgba(0,0,0,0.8); color: white; padding: 15px; border-radius: 8px; font-family: sans-serif; z-index: 1000; pointer-events: none;">
-      <strong>Hybrid Cat AR (Rear Cam)</strong><br>
+      <strong>Palm Animation Control</strong><br>
       <span id="status-text">システム起動中...</span>
     </div>
 
@@ -114,6 +139,7 @@
       <a-marker type="pattern" url="img/pattern-QR_728497.patt" id="marker">
         <a-entity id="cat-model-entity">
            <a-gltf-model 
+            id="cat-model-child"
             src="#cat-model" 
             scale="2 2 2" 
             animation-mixer-local>
