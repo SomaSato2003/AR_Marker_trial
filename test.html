@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>3D Animation Test (No AR)</title>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/donmccarthy/aframe-extras@v7.0.0/dist/aframe-extras.min.js"></script>
+  </head>
+
+  <body style="margin: 0; background-color: #ccc;">
+    <a-scene>
+      <a-assets>
+        <a-asset-item id="my-model" src="model/munchkin_cat-v1.glb"></a-asset-item>
+      </a-assets>
+
+      <a-entity position="0 0 -3">
+        <a-gltf-model 
+          id="cat"
+          src="#my-model" 
+          animation-mixer="clip: *; loop: repeat;" 
+          scale="5 5 5" 
+          rotation="0 45 0">
+        </a-gltf-model>
+      </a-entity>
+
+      <a-sky color="#ECECEC"></a-sky>
+      <a-entity light="type: ambient; intensity: 1"></a-entity>
+      <a-entity light="type: directional; intensity: 0.5" position="-1 1 1"></a-entity>
+      
+      <a-entity camera position="0 1.6 0" look-controls></a-entity>
+    </a-scene>
+
+    <div style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 999;">
+      <button id="playBtn" style="padding: 10px 20px; font-size: 18px; cursor: pointer;">
+        アニメーションを強制再生
+      </button>
+    </div>
+
+    <script>
+      const btn = document.querySelector('#playBtn');
+      const cat = document.querySelector('#cat');
+
+      btn.addEventListener('click', () => {
+        console.log("Play button clicked");
+        // 強制的に再生状態にする命令
+        cat.play();
+        if (cat.components['animation-mixer']) {
+          cat.components['animation-mixer'].play();
+          cat.setAttribute('animation-mixer', {timeScale: 1});
+          alert("再生命令を送信しました。動いていますか？");
+        } else {
+          alert("エラー: animation-mixerが読み込まれていません。");
+        }
+      });
+    </script>
+  </body>
+</html>
