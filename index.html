@@ -2,33 +2,102 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>WebAR Munchkin Cat - Final Success</title>
+    <title>Hybrid AR: Marker to Hand</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
     <script>
       /**
-       * 外部ライブラリ不要でアニメーションを動かす心臓部
+       * アニメーション再生エンジン
        */
       AFRAME.registerComponent('animation-mixer-local', {
-        schema: { timeScale: {default: 1} },
         init: function () {
           this.mixer = null;
           this.el.addEventListener('model-loaded', (e) => {
             const model = e.detail.model;
             if (model.animations && model.animations.length > 0) {
               this.mixer = new THREE.AnimationMixer(model);
-              // すべてのアニメーションを再生
-              model.animations.forEach(anim => {
-                this.mixer.clipAction(anim).play();
-              });
-              console.log("AR Animation Started!");
+              model.animations.forEach(anim => { this.mixer.clipAction(anim).play(); });
             }
           });
         },
         tick: function (t, dt) {
-          if (this.mixer && !isNaN(dt)) {
-            this.mixer.update(dt / 1000 * this.data.timeScale);
+          if (this.mixer && !isNaN(dt)) this.mixer.update(dt / 1000);
+        }
+      });
+
+      /**
+       * マーカーと手のひらを切り替えるロジック
+       */
+      AFRAME.registerComponent('hybrid-bridge', {
+        init: function () {
+          this.cat = document.querySelector('#cat-model-entity');
+          this.marker = document.querySelector('#marker');
+          this.status = document.getElementById('status-text');
+          this.handInFrame = false;
+
+          const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+          hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+
+          hands.onResults((results) => {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+              const landmarks = results.multiHandLandmarks[0];
+              const handedness = results.multiHandedness[0].label;
+
+              // 手のひら判定ロジック
+              const v1 = { x: landmarks[5].x - landmarks[0].x, y: landmarks[5].y - landmarks[0].y };
+              const v2 = { x: landmarks[17].x - landmarks[0].x, y: landmarks[17].y - landmarks[0].y };
+              const crossProduct = v1.x * v2.y - v1.y * v2.x;
+              
+              // 手のひらが見えているか（環境により不等号を調整）
+              let isPalm = (handedness === "Left") ? (crossProduct > 0) : (crossProduct < 0);
+
+              if (isPalm) {
+                const lm = landmarks[9];
+                this.moveToHand(lm.x, lm.y);
+                this.handInFrame = true;
+                this.status.innerText = "✅ 手のひらに移動中";
+              } else {
+                this.handInFrame = false;
+                this.status.innerText = "✋ 手の甲を検知：マーカーに戻ります";
+              }
+            } else {
+              this.handInFrame = false;
+              this.status.innerText = "🔍 マーカーまたは手を探しています";
+            }
+          });
+
+          // AR.jsのカメラ映像をMediaPipeに送る
+          const startMediaPipe = () => {
+            const video = document.querySelector('#arjs-video');
+            if (video) {
+              const camera = new Camera(video, { onFrame: async () => { await hands.send({image: video}); } });
+              camera.start();
+            } else { setTimeout(startMediaPipe, 500); }
+          };
+          startMediaPipe();
+        },
+
+        moveToHand: function (hx, hy) {
+          // 画面上の座標を3D空間へ
+          const x = (hx - 0.5) * 4;
+          const y = -(hy - 0.5) * 3;
+          const z = -3;
+
+          // 猫をシーン直下（ワールド座標系）に移動させて手の位置へ
+          this.el.sceneEl.object3D.add(this.cat.object3D);
+          this.cat.object3D.position.set(x, y, z);
+          this.cat.object3D.rotation.set(0, 0, 0); // 手の上では正面を向く
+        },
+
+        tick: function () {
+          if (!this.handInFrame) {
+            // 手が消えたらマーカーの中に戻す
+            this.marker.object3D.add(this.cat.object3D);
+            this.cat.object3D.position.set(0, 0, 0);
+            this.cat.object3D.rotation.set(0, 0, 0);
           }
         }
       });
@@ -36,22 +105,29 @@
   </head>
 
   <body style="margin: 0; overflow: hidden;">
+    <div id="status-display" style="position: fixed; top: 20px; left: 20px; background: rgba(0,0,0,0.8); color: white; padding: 15px; border-radius: 8px; font-family: sans-serif; z-index: 1000; pointer-events: none;">
+      <strong>Hybrid Cat AR</strong><br>
+      <span id="status-text">システム起動中...</span>
+    </div>
+
     <a-scene 
       embedded 
       arjs="sourceType: webcam; debugUIEnabled: false;"
-      renderer="logarithmicDepthBuffer: true; colorManagement: true;">
+      renderer="logarithmicDepthBuffer: true; colorManagement: true;"
+      hybrid-bridge>
       
       <a-assets>
         <a-asset-item id="cat-model" src="model/munchkin_cat-v1.glb"></a-asset-item>
       </a-assets>
 
-      <a-marker type="pattern" url="img/pattern-QR_728497.patt">
-        <a-gltf-model 
-          src="#cat-model" 
-          scale="2 2 2" 
-          position="0 0 0" 
-          animation-mixer-local>
-        </a-gltf-model>
+      <a-marker type="pattern" url="img/pattern-QR_728497.patt" id="marker">
+        <a-entity id="cat-model-entity">
+           <a-gltf-model 
+            src="#cat-model" 
+            scale="2 2 2" 
+            animation-mixer-local>
+          </a-gltf-model>
+        </a-entity>
       </a-marker>
       
       <a-entity camera></a-entity>
