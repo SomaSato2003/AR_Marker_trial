@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>WebAR Munchkin Cat Final</title>
+    <title>WebAR Final Force Play</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/donmccarthy/aframe-extras@v7.0.0/dist/aframe-extras.min.js"></script>
@@ -21,52 +21,54 @@
       <a-marker 
         type="pattern" 
         url="img/pattern-QR_728497.patt"
-        id="marker">
+        id="marker"
+        force-play-on-found>
         
         <a-gltf-model 
           id="cat"
           src="#my-model" 
-          animation-mixer="clip: *; loop: repeat; active: true;" 
+          animation-mixer="clip: *; loop: repeat;" 
           scale="2 2 2" 
           position="0 0 0" 
-          rotation="0 0 0"
-          sync-animation> </a-gltf-model>
+          rotation="0 0 0">
+        </a-gltf-model>
       </a-marker>
       
       <a-entity camera></a-entity>
     </a-scene>
 
     <script>
-      // モデルが読み込まれた時と、マーカーが見つかった時の両方で再生を叩く
-      AFRAME.registerComponent('sync-animation', {
+      AFRAME.registerComponent('force-play-on-found', {
         init: function () {
-          const el = this.el;
+          const model = document.querySelector('#cat');
 
-          // モデル読み込み完了時
-          el.addEventListener('model-loaded', () => {
-            console.log("Model loaded. Starting animation...");
-            el.setAttribute('animation-mixer', {timeScale: 1});
-          });
+          // マーカーが見つかった時の処理
+          this.el.addEventListener('markerFound', () => {
+            console.log("Marker Found! Forcing Animation Play...");
+            
+            // 1. コンポーネント自体を再生状態にする
+            if (model.components['animation-mixer']) {
+              model.components['animation-mixer'].play();
+            }
+            
+            // 2. A-Frameのエンティティとして再生命令を出す
+            model.play();
 
-          // マーカー認識時
-          const marker = document.querySelector('#marker');
-          marker.addEventListener('markerFound', () => {
-            console.log("Marker found. Resuming animation...");
-            // 一度timeScaleを0にしてから1に戻すことで、強制的に再生を蹴り出します
-            el.setAttribute('animation-mixer', {timeScale: 0});
-            setTimeout(() => {
-              el.setAttribute('animation-mixer', {timeScale: 1});
-            }, 100);
+            // 3. 念押しで属性を再セット
+            model.setAttribute('animation-mixer', {timeScale: 1});
           });
         }
       });
 
-      // ブラウザ制限対策：画面クリックで全モデルを再生
+      // ブラウザの自動再生ブロック解除用（画面クリック）
       window.addEventListener('click', function () {
-        const cat = document.querySelector('#cat');
-        if (cat) {
-            cat.setAttribute('animation-mixer', {timeScale: 1});
-            console.log("Global play triggered via click");
+        const model = document.querySelector('#cat');
+        if (model) {
+          model.play();
+          if (model.components['animation-mixer']) {
+            model.components['animation-mixer'].play();
+          }
+          console.log("User Clicked: Force Play Executed");
         }
       });
     </script>
